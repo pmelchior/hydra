@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>Hydra</title>
+    <meta name="description" content="CPU utilization control">
+    <meta name="keywords" content="">
+    <meta name="author" content="Peter Melchior">
+    <meta name="date" content="2015-09-02 15:13:43">
+    <!-- Le HTML5 shim, for IE6-8 support of HTML elements -->
+    <!--[if lt IE 9]>
+      <script src="http://html5shim.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link rel="stylesheet" href="http://netdna.bootstrapcdn.com/bootstrap/2.3.0/css/bootstrap.min.css" rel="stylesheet" id="bootstrap-css">
+    <style>
+.popover { width: auto; }
+#top-buttons button {
+	margin-top:10px;
+	margin-right:5px;
+}
+
+#vis {
+	clear: all;
+	padding-bottom: 20px;
+}
+
+#tiles {
+	font-size: 11px;
+	clear: both;
+}
+
+#tiles th {
+	font-weight: normal;
+	vertical-align: top;
+	/*padding: 2px;*/
+	color: #777;
+}
+
+#tiles tr th {
+	padding-top: 10px;
+	padding-right: 5px;
+}
+
+#tiles tr:first-child th {
+	padding-top: 3px;
+	padding-right:0px;
+}
+
+#tiles td {
+	-webkit-perspective: 1000;
+}
+
+#tiles .tile {
+	width: 32px;
+	height: 32px;
+	position: relative;
+	-webkit-transform-style: preserve-3d;
+	-webkit-transition: 0.7s;
+}
+
+.face {
+	position: absolute;
+	-webkit-backface-visibility: hidden;
+	width: 32px;
+	height: 32px;
+	background: #eee;
+	border: 1px solid white;
+	-moz-border-radius: 4px;
+	border-radius: 4px;
+}
+
+#tiles td.sel .face {
+	border-color: black;
+}
+
+.face.hidden {
+	display: none;
+}
+
+#tiles td.dim .screen {
+	opacity: 0.6;
+}
+
+.face.back {
+	-webkit-transform: rotateY(180deg);
+}
+
+.tile .screen {
+	background: white;
+	opacity: 0.0;
+	width: 32px;
+	height: 32px;
+	position: absolute;
+	z-index: 1337;
+	-moz-border-radius: 4px;
+	border-radius: 4px;
+	border: 1px solid white;
+}
+
+#map {
+	float: left;
+	width: 320px;
+	height: 202px;
+	margin-bottom: 15px;
+}
+
+	#map path.state {
+		fill: #ddd;
+		stroke: white;
+		stroke-width: 1px;
+	}
+	
+	#map path.state:hover {
+		fill: #5eab1f;
+		fill: #999;
+		cursor: pointer;
+	}
+	
+	#map path.state.sel {
+		fill: #444;
+		cursor: default;
+	}
+
+#legend {
+	clear: left;
+	margin: 0px 0px 20px 0px;
+	width: 135px;
+	color: #777;
+	background: #f3f3f3;
+	border: 1px solid #f0f0f0;
+	overflow: hidden;
+	padding: 5px 7px;
+	-moz-border-radius: 3px;
+	border-radius: 3px;
+	font-size: 11px;
+	line-height: 11px;
+}
+
+#legend ul {
+	list-style-type: none;
+	overflow: hidden;
+	clear: both;
+}
+
+#legend li {
+	float: left;
+	margin-right: 1px;
+	width: 14px;
+	height: 14px;
+}
+
+#legend p {
+	margin-top: 3px;
+}
+
+#legend p.more {
+	float: right;
+}
+
+#legend p.less {
+	float: left;
+}
+</style>
+  </head>
+
+  <body>
+    <div class="wrapper">
+      <!-- ======== Container ======== -->
+      <div class="container">
+      <!-- ======== Header ======== -->
+<div class="row">
+  <div class="span12">
+    <div class="page-header" id="header">
+      <h1>Hydra
+      <small>CPU utilization of the cosmos machines</small></h1>
+    </div>
+  </div>
+</div>
+<!-- ======== Content area ======== -->
+<div class="row">
+  <div class="span3">
+    <div id="legend"></div>
+  </div>
+  <div class="span6" id="top-buttons">
+    <button id="reload" class="btn btn-primary">Reload</button>
+  </div>
+</div>
+<div id="vis"></div>
+
+<div id="process_modal" class="modal hide" style="width:720px; margin-left:-380px;">
+  <div class="modal-header">
+    <button type="button" class="close" data-dismiss="modal" aria-hidden="true">&times;</button>
+    <h3>Processes</h3>
+  </div>
+  <div class="modal-body">
+  </div>
+</div>      </div>
+      <!-- ==== Space to fill page ==== -->
+      <div class="push"></div>
+    </div>
+    
+    <!-- ======== Footer ======== -->
+    <div class="footer">
+      <div class="container">
+      </div>
+    </div>
+    
+    <!-- ======== Script zone ======== -->
+
+<script src="http://code.jquery.com/jquery-1.10.2.min.js"></script>      
+<script src="http://netdna.bootstrapcdn.com/bootstrap/2.3.0/js/bootstrap.min.js"></script>
+<script src="d3.v2.min.js"></script>
+<script src="browserdetect.js"></script>
+<script src="colorbrewer.js"></script>
+<script>
+var data;
+var hostinfo = {
+  cosmos5: { os: 'Red Hat Enterprise Linux Server 6.2 64bit', cpu: 'Intel(R) Core(TM)2 CPU 6600 @ 2.40GHz', cores: 2, mem: '2 GB'},
+  cosmos7: { os: 'Red Hat Enterprise Linux Client 5.7 <b>32bit</b>', cpu: 'Intel(R) Xeon(R) CPU E5420 @ 2.50GHz', cores: 8, mem: '8 GB'},
+  cosmos11: { os: 'Red Hat Enterprise Linux Server 6.2 64bit', cpu: 'Intel(R) Pentium(R) 4 CPU 2.26GHz', cores: 1, mem: '1.5 GB'},
+  cosmos12: { os: 'Red Hat Enterprise Linux Server 6.2 64bit', cpu: 'Intel(R) Core(TM)2 Duo CPU E8400 @ 3.00GHz', cores: 2, mem: '3.6 GB'},
+  cosmos13: { os: 'Red Hat Enterprise Linux Server 6.2 64bit', cpu: 'Intel(R) Xeon(R) CPU X3370 @ 3.00GHz', cores: 4, mem: '8 GB'},
+  cosmos16: { os: 'Red Hat Enterprise Linux Server 6.2 64bit', cpu: 'Intel(R) Core(TM) i5-2500 CPU @ 3.30GHz', cores: 4, mem: '3.6 GB'},
+  cosmos17: { os: 'Red Hat Enterprise Linux Server 6.2 64bit', cpu: 'Intel(R) Xeon(R) CPU E5420 @ 2.50GHz', cores: 8, mem: '8 GB'},
+  cosmos18: { os: 'Red Hat Enterprise Linux Server 6.2 64bit', cpu: 'Intel(R) Xeon(R) CPU E5420 @ 2.50GHz', cores: 8, mem: '8 GB'},
+  cosmos20: { os: 'Red Hat Enterprise Linux Server 6.2 64bit', cpu: 'Intel(R) Xeon(R) CPU E5420 @ 2.50GHz', cores: 8, mem: '8 GB'},
+  cosmos21: { os: 'Red Hat Enterprise Linux Server 6.2 64bit', cpu: 'Intel(R) Xeon(R) CPU X3370 @ 3.00GHz', cores: 4, mem: '8 GB'},
+  cosmos22: { os: 'Red Hat Enterprise Linux Server 6.2 64bit', cpu: 'Intel(R) Xeon(R) CPU X3370 @ 3.00GHz', cores: 4, mem: '8 GB'},
+  cosmos23: { os: 'Red Hat Enterprise Linux Server 6.2 64bit', cpu: 'Intel(R) Xeon(R) CPU X3370 @ 3.00GHz', cores: 4, mem: '8 GB'},
+  cosmos23: { os: 'Red Hat Enterprise Linux Server 6.2 64bit', cpu: 'Intel(R) Core(TM)2 CPU 6600  @ 2.40GHz', cores: 4, mem: '8 GB'},
+  cosmos30: { os: 'Red Hat Enterprise Linux Server 6.2 64bit', cpu: 'Intel(R) Core(TM) i7-3930K CPU @ 3.20GHz', cores: 12, mem: '64 GB'},
+  cosmos31: { os: 'Red Hat Enterprise Linux Server 6.2 64bit', cpu: 'Intel(R) Core(TM) i7-3930K CPU @ 3.20GHz', cores: 12, mem: '64 GB'},
+  cosmos41: { os: 'Red Hat Enterprise Linux Server 6.5 64bit', cpu: 'Intel(R) Xeon(R) CPU E5-2640 v2 @ 2.00GHz', cores: 32, mem: '64 GB'},
+  cosmos42: { os: 'Red Hat Enterprise Linux Server 6.5 64bit', cpu: 'Intel(R) Xeon(R) CPU E5-2640 v2 @ 2.00GHz', cores: 32, mem: '64 GB'},
+  cosmos43: { os: 'Red Hat Enterprise Linux Server 6.5 64bit', cpu: 'Intel(R) Xeon(R) CPU E5-2640 v2 @ 2.00GHz', cores: 32, mem: '64 GB'},
+};
+var browser = BrowserDetect;
+var slices = [];
+var wait = 5;
+for (var delta_min=0; delta_min < 120; delta_min +=wait) {
+  slices.push(delta_min);
+}
+
+var buckets = 9;
+function defineColor() {
+  // for whatever reason I cannot specify domain [100,0],
+  // but have to provide the numbers for each bucket!
+  var domain = [];
+  for (var i = 0; i < buckets; i++) {
+    domain.push(100./(buckets-1)*i);
+  }
+  return d3.scale.linear()
+    .domain(domain)
+    .range(colorbrewer.OrRd[buckets]);
+}
+
+function reColorTiles() {
+  var side = d3.select('#tiles').attr('class');
+  if (side === 'front') {
+    side = 'back';
+  } else {
+    side = 'front';
+  }
+  for (var d=0; d < data.length; d++) {
+    for (var h = 0; h < slices.length; h++) {
+      var sel = '#d' + d + 'h' + h + ' .tile .' + side;
+      var val = null;
+      var processes = null;
+      // find closest match in given times to actual slice
+      var utils = data[d].util;
+      for (var i=0; i < utils.length; i++) {
+	if (Math.abs(utils[i][0]+slices[h]) < 0.5*wait) {
+	  val = utils[i][1];
+	  processes = "<pre>" + utils[i][2] + "</pre>";
+	  break;
+	}
+      }
+      
+      if (val !== null) {
+	d3.select(sel).style("background-color", color(val));
+	$('#d' + d + 'h' + h).find(".processes").data("content", processes);
+      }
+      else
+	d3.select(sel).style("background-color", "#DDD");
+    }
+  }
+  flipTiles();
+}
+
+function flipTiles() {
+  var oldSide = d3.select('#tiles').attr('class'),
+  newSide = '';
+  if (oldSide == 'front') {
+    newSide = 'back';
+  } else {
+    newSide = 'front';
+  }
+  var flipper = function(h, d, side) {
+    return function() {
+      var sel = '#d' + d + 'h' + h + ' .tile',
+	rotateY = 'rotateY(180deg)';
+      if (side === 'back') {
+	rotateY = 'rotateY(0deg)';	
+      }
+      if (browser.browser === 'Safari' || browser.browser === 'Chrome') {
+	d3.select(sel).style('-webkit-transform', rotateY);
+      } else {
+	d3.select(sel).select('.' + oldSide).classed('hidden', true);
+	d3.select(sel).select('.' + newSide).classed('hidden', false);
+      }
+    };
+  };
+  for (var h = 0; h < slices.length; h++) {
+    var d = 0;
+    for (key in data) {
+      var side = d3.select('#tiles').attr('class');
+      setTimeout(flipper(h, d, side), (h * 20) + (d * 20) + (Math.random() * 100));
+      d++;
+    }
+  }
+  d3.select('#tiles').attr('class', newSide);
+}
+
+function hostPopover(hostname) {
+  var content = "<div style='text-align:left;'><b>CPU(s):</b> " + hostinfo[hostname].cores + "&times; " + hostinfo[hostname].cpu + "<br />";
+  content += "<b>Main memory:</b> " + hostinfo[hostname].mem + "<br />";
+  content += "<b>Operating system:</b> " + hostinfo[hostname].os + "</div>";
+  var s = '<a rel="popover" data-original-title="' + hostname + '" data-content="' + content + '" data-trigger="hover">' + hostname + '</a>';
+  return s;
+}
+
+function createTiles() {
+  var html = '<table id="tiles" class="front">';
+  html += '<tr><th>minutes ago</th>';
+  for (var s = 0; s < slices.length; s++) {
+    html += '<th>' + slices[s] + '</th>';
+  }
+  html += '</tr>';
+
+  for (var d=0; d < data.length; d++) {
+    html += '<tr>';
+    html += '<th>' + hostPopover(data[d].hostname) + '</th>';
+    for (var h = 0; h < slices.length; h++) {
+      html += '<td id="d' + d + 'h' + h + '" class="d' + d + ' h' + h + '"><a href="#" class="processes"><div class="tile"><div class="face front"></div><div class="face back"></div></div></a></td>';
+    }
+    html += '</tr>';
+  }
+  html += '</table>';
+  d3.select('#vis').html(html);
+}
+
+function createLegend() {
+  var html = '<ul style="margin:0">';
+  for (var i=0; i < buckets; i++) {
+    html += '<li style="background-color:' + color(100./(buckets-1)*i) + '"></li>';
+  }
+  html += '</ul><p class="more">high</p>';
+  html += '<p class="less">low</p>';
+  d3.select("#legend").html(html);
+}
+
+var hostSorter = function(a,b) {
+  var pattern = /[0-9]+/;
+  var num_a = parseInt(a.hostname.match(pattern));
+  var num_b = parseInt(b.hostname.match(pattern));
+  if (num_a > num_b)
+    return 1;
+  if (num_a < num_b)
+    return -1;
+  return 0;
+}
+
+function loadData() {
+  d3.json('cputils.json', function(json) {
+    data = json;
+    data.sort(hostSorter);
+    if ($('#tiles').length == 0) {
+      createTiles();
+      $("a[rel=popover]").popover({'animation': false, 'html': true, 'placement': 'right'});
+      $("a[class=processes]").on("click", showProcesses);
+    }
+    reColorTiles();
+  });
+}
+
+function showProcesses(evt) {
+	$("#process_modal").find(".modal-body").html("<pre>" + $(evt.currentTarget).data("content") + "</pre>");
+	$("#process_modal").modal("show");
+}
+
+var color = defineColor();
+createLegend();
+loadData();
+$("#reload").on('click', loadData);
+$("#process_modal").modal({'show': false, 'keyboard': true});
+</script>
+
+  </body>
+</html>

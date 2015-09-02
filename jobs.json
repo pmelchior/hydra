@@ -1,0 +1,14 @@
+{
+	"command": "python code/shear-stacking-tests/stack_slices.py %d",
+	"counting": true,
+	"min_count": 0,
+	"max_count": 70,
+	"listen" : false,
+	"sleep_time": 5,
+	"hosts": [
+		{"name": "cosmos30", "cpus": 8},
+		{"name": "cosmos31", "cpus": 8},
+		{"name": "cosmos22", "cpus": 2},
+		{"name": "cosmos23", "cpus": 2}
+	]
+}
